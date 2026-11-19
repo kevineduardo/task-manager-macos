@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            label: Apple silicon
+          - runner: macos-15-intel
+            label: Intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version && uname -m
+      - name: Unit tests
+        run: swift test --parallel
+
+  app:
+    name: Universal app + screenshots
+    needs: test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build universal app
+        run: scripts/build-app.sh
+      - name: Render screenshots (dark + light)
+        run: |
+          app="dist/Task Manager.app/Contents/MacOS/TaskManager"
+          "$app" --screenshots screenshots --theme dark
+          "$app" --screenshots screenshots --theme light
+          ls -la screenshots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TaskManager-app
+          path: |
+            dist/*.zip
+            dist/*.dmg
+            dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/*.png
